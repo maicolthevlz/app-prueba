@@ -65,3 +65,4 @@ No se ha inventado ningún endpoint ni mecanismo de login. Para activar modo rea
 
 1. Entregar a `getAccessToken(realAccessToken)` el token que ya tenga la aplicación.
 2. Configurar `EXPO_PUBLIC_DNN_AUTH_URL` con la URL completa del endpoint DNN de prueba.
+# app-prueba
