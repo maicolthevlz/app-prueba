@@ -1,0 +1,19 @@
+{
+  "name": "jwt-mock",
+  "version": "1.0.0",
+  "description": "Servidor local de prueba para el flujo Access Token -> código temporal -> DNN",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.mjs",
+    "test": "node --test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "jose": "^6.2.12"
+  }
+}
