@@ -1,4 +1,5 @@
 import {
+  useMemo,
   useState,
 } from "react";
 
@@ -46,6 +47,25 @@ const PASOS: Paso[] = [
   "4",
 ];
 
+function normalizePreviewToken(
+  value: string
+): string {
+  const clean =
+    value.trim();
+
+  if (
+    clean
+      .toLowerCase()
+      .startsWith("bearer ")
+  ) {
+    return clean
+      .slice(7)
+      .trim();
+  }
+
+  return clean;
+}
+
 export default function HomeScreen() {
   const [
     cuenta,
@@ -77,6 +97,15 @@ export default function HomeScreen() {
       environment.dnnScenario
     );
 
+  /*
+   * JWT PEGADO MANUALMENTE.
+   */
+  const [
+    manualToken,
+    setManualToken,
+  ] =
+    useState("");
+
   const [
     formUrl,
     setFormUrl,
@@ -95,6 +124,35 @@ export default function HomeScreen() {
   ] =
     useState(false);
 
+  const tokenPreview =
+    useMemo(
+      () =>
+        normalizePreviewToken(
+          manualToken
+        ),
+      [
+        manualToken,
+      ]
+    );
+
+  const tokenParts =
+    useMemo(
+      () =>
+        tokenPreview
+          ? tokenPreview.split(
+              "."
+            ).length
+          : 0,
+      [
+        tokenPreview,
+      ]
+    );
+
+  const tokenLooksValid =
+    tokenPreview.length >
+      0 &&
+    tokenParts === 3;
+
   const abrirFormulario =
     async () => {
       const cleanCuenta =
@@ -103,7 +161,12 @@ export default function HomeScreen() {
       const cleanProceso =
         proceso.trim();
 
-      setError(undefined);
+      const cleanManualToken =
+        manualToken.trim();
+
+      setError(
+        undefined
+      );
 
       if (!cleanCuenta) {
         setError(
@@ -119,42 +182,72 @@ export default function HomeScreen() {
         return;
       }
 
-      setLoading(true);
+      /*
+       * Para esta prueba definitiva
+       * exigimos JWT manual.
+       *
+       * Así NO dependemos de:
+       * Cloudflare,
+       * localhost,
+       * VPN para el mock,
+       * ni fetch externo.
+       */
+      if (
+        !cleanManualToken
+      ) {
+        setError(
+          "Pega el JWT que deseas probar."
+        );
+        return;
+      }
+
+      if (
+        tokenParts !== 3
+      ) {
+        setError(
+          "El JWT pegado no parece válido. Debe contener 3 partes separadas por puntos."
+        );
+        return;
+      }
+
+      setLoading(
+        true
+      );
 
       try {
         /*
-         * 1. Generamos JWT.
+         * =================================
+         * 1. TOKEN
+         * =================================
+         *
+         * Al enviar manualToken,
+         * auth.service NO hace fetch.
          */
+
         const token =
           await getAccessToken(
-            scenario
+            scenario,
+            cleanManualToken
           );
-
-        if (
-          !token?.trim()
-        ) {
-          throw new Error(
-            "No se recibió JWT"
-          );
-        }
 
         console.info(
-          `[DNN] Usuario: ${scenario}`
+          `[DNN] Usuario seleccionado: ${scenario}`
         );
 
         console.info(
           `[DNN] Formulario: ${paso}`
         );
 
+        console.info(
+          "[DNN] Fuente del token: MANUAL"
+        );
+
         /*
-         * 2. Construimos:
-         *
-         * MobileAuth/Test
-         * ?token=JWT
-         * &cuenta=...
-         * &proceso=...
-         * &paso=...
+         * =================================
+         * 2. URL DNN
+         * =================================
          */
+
         const url =
           buildDnnUrl(
             environment.dnnUrl,
@@ -165,9 +258,11 @@ export default function HomeScreen() {
           );
 
         /*
-         * 3. Esta URL es la que
-         * recibirá DnnWebView.
+         * =================================
+         * 3. WEBVIEW
+         * =================================
          */
+
         setFormUrl(
           url
         );
@@ -205,15 +300,19 @@ export default function HomeScreen() {
       );
     };
 
-  const retry = () => {
-    setFormUrl(
-      undefined
-    );
+  const retry =
+    () => {
+      setFormUrl(
+        undefined
+      );
 
-    setTimeout(() => {
-      void abrirFormulario();
-    }, 0);
-  };
+      setTimeout(
+        () => {
+          void abrirFormulario();
+        },
+        0
+      );
+    };
 
   const handleDnnMessage =
     (
@@ -251,14 +350,17 @@ export default function HomeScreen() {
         "ERROR"
       ) {
         console.warn(
-          "[DNN] Error transitorio recibido"
+          "[DNN] Error informado por DNN"
         );
       }
     };
 
   /*
+   * =================================
    * WEBVIEW
+   * =================================
    */
+
   if (formUrl) {
     return (
       <View
@@ -309,8 +411,10 @@ export default function HomeScreen() {
             >
               {scenario ===
               "authenticated"
-                ? "Usuario autenticado"
-                : "Usuario no autenticado"}
+                ? "Autenticado"
+                : "No autenticado"}
+              {" · "}
+              JWT manual
             </Text>
           </View>
         </View>
@@ -337,8 +441,11 @@ export default function HomeScreen() {
   }
 
   /*
-   * CONSULTA
+   * =================================
+   * CONFIGURACIÓN DE PRUEBA
+   * =================================
    */
+
   return (
     <ScrollView
       contentContainerStyle={
@@ -356,7 +463,7 @@ export default function HomeScreen() {
             styles.title
           }
         >
-          Consulta de estado
+          Prueba DNN CREG001
         </Text>
 
         <Text
@@ -364,16 +471,31 @@ export default function HomeScreen() {
             styles.subtitle
           }
         >
-          Configura los datos
-          de la prueba antes
-          de abrir DNN.
+          Configura la prueba,
+          pega el JWT y abre
+          directamente el
+          formulario DNN.
         </Text>
+
+        {/*
+         * =============================
+         * CUENTA / PROCESO
+         * =============================
+         */}
 
         <View
           style={
             styles.section
           }
         >
+          <Text
+            style={
+              styles.sectionTitle
+            }
+          >
+            1. Datos de la solicitud
+          </Text>
+
           <Text
             style={
               styles.label
@@ -425,6 +547,12 @@ export default function HomeScreen() {
           />
         </View>
 
+        {/*
+         * =============================
+         * FORMULARIO
+         * =============================
+         */}
+
         <View
           style={
             styles.section
@@ -432,10 +560,10 @@ export default function HomeScreen() {
         >
           <Text
             style={
-              styles.label
+              styles.sectionTitle
             }
           >
-            Formulario
+            2. Formulario
           </Text>
 
           <Text
@@ -443,9 +571,9 @@ export default function HomeScreen() {
               styles.helpText
             }
           >
-            Selecciona el
-            formulario que
-            deseas visualizar.
+            El valor seleccionado
+            se envía como parámetro
+            paso.
           </Text>
 
           <View
@@ -495,6 +623,12 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/*
+         * =============================
+         * ESCENARIO
+         * =============================
+         */}
+
         <View
           style={
             styles.section
@@ -502,10 +636,10 @@ export default function HomeScreen() {
         >
           <Text
             style={
-              styles.label
+              styles.sectionTitle
             }
           >
-            Tipo de usuario
+            3. Tipo de usuario
           </Text>
 
           <View
@@ -575,7 +709,199 @@ export default function HomeScreen() {
               </Text>
             </Pressable>
           </View>
+
+          <Text
+            style={
+              styles.warningText
+            }
+          >
+            Importante: este selector
+            identifica la prueba, pero
+            no modifica un JWT pegado.
+            Pega el token correspondiente
+            al escenario seleccionado.
+          </Text>
         </View>
+
+        {/*
+         * =============================
+         * TOKEN MANUAL
+         * =============================
+         */}
+
+        <View
+          style={
+            styles.section
+          }
+        >
+          <Text
+            style={
+              styles.sectionTitle
+            }
+          >
+            4. Token JWT
+          </Text>
+
+          <Text
+            style={
+              styles.helpText
+            }
+          >
+            Pega el JWT completo.
+            También puedes pegarlo
+            empezando por "Bearer ".
+          </Text>
+
+          <TextInput
+            value={
+              manualToken
+            }
+            onChangeText={
+              setManualToken
+            }
+            placeholder="eyJhbGciOiJSUzI1NiIs..."
+            autoCapitalize="none"
+            autoCorrect={
+              false
+            }
+            multiline
+            numberOfLines={
+              7
+            }
+            textAlignVertical="top"
+            style={[
+              styles.input,
+              styles.tokenInput,
+            ]}
+          />
+
+          <View
+            style={
+              styles.tokenStatusRow
+            }
+          >
+            <View
+              style={
+                styles.tokenStatusInfo
+              }
+            >
+              <Text
+                style={
+                  styles.tokenMeta
+                }
+              >
+                Longitud:{" "}
+                {tokenPreview.length}
+              </Text>
+
+              <Text
+                style={
+                  styles.tokenMeta
+                }
+              >
+                Partes JWT:{" "}
+                {tokenParts}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.statusBadge,
+                tokenLooksValid
+                  ? styles.statusOk
+                  : styles.statusPending,
+              ]}
+            >
+              <Text
+                style={
+                  styles.statusBadgeText
+                }
+              >
+                {tokenLooksValid
+                  ? "Formato válido"
+                  : "Sin validar"}
+              </Text>
+            </View>
+          </View>
+
+          {tokenPreview && (
+            <View
+              style={
+                styles.tokenPreview
+              }
+            >
+              <Text
+                style={
+                  styles.tokenPreviewLabel
+                }
+              >
+                Inicio
+              </Text>
+
+              <Text
+                selectable
+                style={
+                  styles.tokenPreviewValue
+                }
+              >
+                {tokenPreview.slice(
+                  0,
+                  32
+                )}
+                ...
+              </Text>
+
+              <Text
+                style={
+                  styles.tokenPreviewLabel
+                }
+              >
+                Final
+              </Text>
+
+              <Text
+                selectable
+                style={
+                  styles.tokenPreviewValue
+                }
+              >
+                ...
+                {tokenPreview.slice(
+                  -32
+                )}
+              </Text>
+            </View>
+          )}
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              setManualToken(
+                ""
+              );
+              setError(
+                undefined
+              );
+            }}
+            style={
+              styles.clearButton
+            }
+          >
+            <Text
+              style={
+                styles.clearButtonText
+              }
+            >
+              Limpiar token
+            </Text>
+          </Pressable>
+        </View>
+
+        {/*
+         * =============================
+         * RESUMEN
+         * =============================
+         */}
 
         <View
           style={
@@ -636,10 +962,18 @@ export default function HomeScreen() {
               styles.summaryText
             }
           >
-            Token:{" "}
-            {environment.useMock
-              ? "Mock"
-              : "Real"}
+            Token: Manual
+          </Text>
+
+          <Text
+            style={
+              styles.summaryText
+            }
+          >
+            JWT:{" "}
+            {tokenLooksValid
+              ? `${tokenPreview.length} caracteres`
+              : "Pendiente"}
           </Text>
         </View>
 
@@ -699,20 +1033,18 @@ const styles =
       flexGrow: 1,
       backgroundColor:
         "#f4f7fa",
-      padding: 20,
-      justifyContent:
-        "center",
+      padding: 18,
     },
 
     content: {
       width: "100%",
-      maxWidth: 560,
+      maxWidth: 620,
       alignSelf:
         "center",
       backgroundColor:
         "#ffffff",
       borderRadius: 16,
-      padding: 22,
+      padding: 20,
     },
 
     title: {
@@ -733,30 +1065,48 @@ const styles =
     },
 
     section: {
-      marginBottom: 22,
+      marginBottom: 24,
     },
 
-    label: {
-      marginBottom: 8,
-      fontSize: 15,
+    sectionTitle: {
+      marginBottom: 12,
+      fontSize: 17,
       fontWeight:
-        "600",
+        "700",
       color:
         "#17212b",
     },
 
+    label: {
+      marginBottom: 8,
+      fontSize: 14,
+      fontWeight:
+        "600",
+      color:
+        "#334155",
+    },
+
     helpText: {
-      marginTop: -3,
       marginBottom: 12,
       fontSize: 13,
+      lineHeight: 18,
       color:
         "#64748b",
+    },
+
+    warningText: {
+      marginTop: 10,
+      fontSize: 12,
+      lineHeight: 18,
+      color:
+        "#92400e",
     },
 
     input: {
       minHeight: 50,
       marginBottom: 16,
       paddingHorizontal: 14,
+      paddingVertical: 12,
       borderWidth: 1,
       borderColor:
         "#cbd5e1",
@@ -765,7 +1115,13 @@ const styles =
         "#ffffff",
       color:
         "#17212b",
-      fontSize: 16,
+      fontSize: 15,
+    },
+
+    tokenInput: {
+      minHeight: 150,
+      fontSize: 12,
+      lineHeight: 18,
     },
 
     optionRow: {
@@ -841,6 +1197,94 @@ const styles =
         "#ffffff",
     },
 
+    tokenStatusRow: {
+      flexDirection:
+        "row",
+      alignItems:
+        "center",
+      justifyContent:
+        "space-between",
+      gap: 12,
+    },
+
+    tokenStatusInfo: {
+      flex: 1,
+    },
+
+    tokenMeta: {
+      fontSize: 12,
+      color:
+        "#64748b",
+    },
+
+    statusBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+    },
+
+    statusOk: {
+      backgroundColor:
+        "#dcfce7",
+    },
+
+    statusPending: {
+      backgroundColor:
+        "#e2e8f0",
+    },
+
+    statusBadgeText: {
+      fontSize: 11,
+      fontWeight:
+        "700",
+      color:
+        "#334155",
+    },
+
+    tokenPreview: {
+      marginTop: 12,
+      padding: 12,
+      borderRadius: 8,
+      backgroundColor:
+        "#f8fafc",
+    },
+
+    tokenPreviewLabel: {
+      marginTop: 4,
+      fontSize: 11,
+      fontWeight:
+        "700",
+      color:
+        "#64748b",
+    },
+
+    tokenPreviewValue: {
+      marginTop: 2,
+      fontSize: 11,
+      color:
+        "#17212b",
+    },
+
+    clearButton: {
+      alignSelf:
+        "flex-start",
+      marginTop: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderWidth: 1,
+      borderColor:
+        "#cbd5e1",
+      borderRadius: 8,
+    },
+
+    clearButtonText: {
+      fontSize: 12,
+      fontWeight:
+        "600",
+      color:
+        "#475569",
+    },
+
     summary: {
       marginBottom: 20,
       padding: 16,
@@ -877,10 +1321,11 @@ const styles =
       color:
         "#991b1b",
       fontSize: 14,
+      lineHeight: 19,
     },
 
     openButton: {
-      minHeight: 54,
+      minHeight: 56,
       alignItems:
         "center",
       justifyContent:

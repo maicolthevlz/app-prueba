@@ -11,19 +11,142 @@ type MockTokenResponse = {
   error?: string;
 };
 
+function normalizeToken(
+  value?: string
+): string {
+  const token =
+    value?.trim() ?? "";
+
+  if (
+    token
+      .toLowerCase()
+      .startsWith("bearer ")
+  ) {
+    return token
+      .slice(7)
+      .trim();
+  }
+
+  return token;
+}
+
+export function validateJwt(
+  rawToken: string
+): string {
+  const token =
+    normalizeToken(
+      rawToken
+    );
+
+  if (!token) {
+    throw new Error(
+      "El JWT está vacío"
+    );
+  }
+
+  const parts =
+    token.split(".");
+
+  if (
+    parts.length !== 3 ||
+    parts.some(
+      (part) =>
+        part.length === 0
+    )
+  ) {
+    throw new Error(
+      "El token no tiene formato JWT válido. Debe tener header.payload.signature"
+    );
+  }
+
+  return token;
+}
+
 /**
- * Obtiene el JWT que posteriormente
- * será enviado a DNN.
+ * Obtiene el JWT que se enviará a DNN.
+ *
+ * Prioridad:
+ *
+ * 1. JWT pegado manualmente.
+ * 2. EXPO_PUBLIC_DNN_TOKEN.
+ * 3. Mock remoto/local, únicamente
+ *    si EXPO_PUBLIC_USE_MOCK=true.
  */
 export async function getAccessToken(
   scenario: DnnScenario =
-    environment.dnnScenario
+    environment.dnnScenario,
+  manualToken?: string
 ): Promise<string> {
   /*
-   * ==============================
-   * MOCK
-   * ==============================
+   * =================================
+   * TOKEN MANUAL
+   * =================================
    */
+
+  const manual =
+    normalizeToken(
+      manualToken
+    );
+
+  if (manual) {
+    const token =
+      validateJwt(
+        manual
+      );
+
+    console.info(
+      "[AUTH] Utilizando JWT manual"
+    );
+
+    console.info(
+      `[AUTH] Escenario visual: ${scenario}`
+    );
+
+    console.info(
+      `[AUTH] JWT length: ${token.length}`
+    );
+
+    console.info(
+      `[AUTH] JWT partes: ${token.split(".").length}`
+    );
+
+    return token;
+  }
+
+  /*
+   * =================================
+   * TOKEN CONFIGURADO EN .ENV
+   * =================================
+   */
+
+  const configuredToken =
+    normalizeToken(
+      environment.dnnToken
+    );
+
+  if (configuredToken) {
+    const token =
+      validateJwt(
+        configuredToken
+      );
+
+    console.info(
+      "[AUTH] Utilizando EXPO_PUBLIC_DNN_TOKEN"
+    );
+
+    console.info(
+      `[AUTH] JWT length: ${token.length}`
+    );
+
+    return token;
+  }
+
+  /*
+   * =================================
+   * MOCK
+   * =================================
+   */
+
   if (
     environment.useMock
   ) {
@@ -35,7 +158,7 @@ export async function getAccessToken(
       );
 
     console.info(
-      `[AUTH] Solicitando token: ${scenario}`
+      `[AUTH] Solicitando token al mock: ${scenario}`
     );
 
     const response =
@@ -73,33 +196,12 @@ export async function getAccessToken(
     }
 
     const token =
-      data.access_token.trim();
-
-    if (!token) {
-      throw new Error(
-        "El mock devolvió un JWT vacío"
+      validateJwt(
+        data.access_token
       );
-    }
-
-    /*
-     * Un JWT normal tiene:
-     *
-     * header.payload.signature
-     */
-    const parts =
-      token.split(".");
-
-    if (
-      parts.length !==
-      3
-    ) {
-      throw new Error(
-        `El token recibido no tiene formato JWT válido (${parts.length} partes)`
-      );
-    }
 
     console.info(
-      `[AUTH] Token generado: ${
+      `[AUTH] Token generado por mock: ${
         data.scenario ??
         scenario
       }`
@@ -109,49 +211,10 @@ export async function getAccessToken(
       `[AUTH] JWT length: ${token.length}`
     );
 
-    console.info(
-      `[AUTH] JWT partes: ${parts.length}`
-    );
-
     return token;
   }
 
-  /*
-   * ==============================
-   * TOKEN REAL
-   * ==============================
-   */
-
-  const token =
-    environment
-      .dnnToken
-      .trim();
-
-  if (!token) {
-    throw new Error(
-      "Configura EXPO_PUBLIC_DNN_TOKEN"
-    );
-  }
-
-  const parts =
-    token.split(".");
-
-  if (
-    parts.length !==
-    3
-  ) {
-    throw new Error(
-      "EXPO_PUBLIC_DNN_TOKEN no tiene formato JWT válido"
-    );
-  }
-
-  console.info(
-    "[AUTH] Utilizando token real"
+  throw new Error(
+    "Pega un JWT en el campo Token JWT antes de abrir el formulario"
   );
-
-  console.info(
-    `[AUTH] JWT length: ${token.length}`
-  );
-
-  return token;
 }

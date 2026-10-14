@@ -37,6 +37,12 @@ import {
   SignJWT,
 } from "jose";
 
+/*
+ * ======================================================
+ * CONFIGURACIÓN
+ * ======================================================
+ */
+
 const SERVER_DIRECTORY =
   dirname(
     fileURLToPath(
@@ -46,11 +52,23 @@ const SERVER_DIRECTORY =
 
 const DEFAULT_PORT = 5050;
 
+/*
+ * Audience observado en el token real.
+ */
 const DEFAULT_AUDIENCE =
-  "dnn-test-api";
+  "de60c92e-c254-401d-8b76-276fb37e50b5";
 
 const DEFAULT_CODE_TTL_MS =
   60_000;
+
+/*
+ * El JWT dura 8 horas para facilitar
+ * las pruebas manuales.
+ */
+const TOKEN_TTL = "8h";
+
+const TOKEN_TTL_SECONDS =
+  8 * 60 * 60;
 
 const PRIVATE_KEY_FILE =
   "private-key.pem";
@@ -60,56 +78,105 @@ const PUBLIC_KEY_FILE =
 
 /*
  * ======================================================
- * DATOS DE PRUEBA
+ * PERSONAL INFORMATION
  * ======================================================
  *
- * La estructura intenta replicar los claims relevantes
- * observados en el JWT entregado por el cliente.
+ * IMPORTANTE:
  *
- * Especialmente:
+ * En el JWT real `personalinformation`
+ * NO es un objeto.
  *
- * email
- * emails
- * given_name
- * family_name
- * name
- * phone_number
- * personalinformation
+ * Es un STRING que internamente contiene JSON.
  *
- * El documento REALMENTE IMPORTANTE para DNN está en:
+ * Ejemplo:
  *
- * personalinformation.numeroIdentificacion
+ * "personalinformation":
+ * "{\"correoElectronico\":\"...\",...}"
  */
 
 function createPersonalInformation({
   email,
   document,
   givenName,
-  firstSurname,
-  secondSurname = "",
+  surname,
+  displayName,
   phone,
 }) {
   return JSON.stringify({
+    /*
+     * Correo del usuario.
+     */
     correoElectronico:
       email,
 
+    /*
+     * Según el token real.
+     */
+    idTipoIdentificacion:
+      "1",
+
+    /*
+     * Documento.
+     */
     numeroIdentificacion:
       document,
 
+    /*
+     * Nombre.
+     */
     nombres:
       givenName,
 
-    primerApellido:
-      firstSurname,
+    /*
+     * IMPORTANTE:
+     *
+     * El token real usa:
+     *
+     * apellidos
+     *
+     * NO:
+     *
+     * primerApellido
+     * segundoApellido
+     */
+    apellidos:
+      surname,
 
-    segundoApellido:
-      secondSurname,
+    /*
+     * Nombre mostrado.
+     */
+    nombreParaMostrar:
+      displayName ??
+      givenName,
 
+    /*
+     * Teléfono sin +57 porque
+     * codigoPais viene separado.
+     */
     telefonoMovil:
       phone,
 
+    /*
+     * El token real usa +57.
+     */
     codigoPais:
-      "57",
+      "+57",
+
+    /*
+     * Claims adicionales presentes
+     * en personalinformation real.
+     */
+    aceptaTerminosYCondiciones:
+      "SI",
+
+    aceptaPoliticaPrivacidad:
+      "SI",
+
+    fechaAceptacionTerminosDatos:
+      "2026-05-20T22:16:41.6282143+00:00",
+
+    estadoRegistro:
+      "Activo",
   });
 }
 
@@ -134,29 +201,34 @@ const AUTHENTICATED_USER =
       "usuario.prueba@essa.com.co",
     ],
 
-    given_name:
-      "Usuario",
-
     family_name:
       "Prueba",
+
+    given_name:
+      "Usuario",
 
     name:
       "Usuario Prueba",
 
     phone_number:
-      "+573001234567",
+      "3001234567",
 
     /*
-     * Compatibilidad adicional.
+     * Lo dejamos también en raíz
+     * como compatibilidad.
      *
-     * El token del cliente maneja el documento
-     * principalmente dentro de personalinformation,
-     * pero dejamos document también para facilitar
-     * pruebas en DNN.
+     * El dato importante para DNN
+     * está en:
+     *
+     * personalinformation
+     *   .numeroIdentificacion
      */
     document:
       "13844928",
 
+    /*
+     * MISMA ESTRUCTURA DEL TOKEN REAL.
+     */
     personalinformation:
       createPersonalInformation({
         email:
@@ -168,16 +240,35 @@ const AUTHENTICATED_USER =
         givenName:
           "Usuario",
 
-        firstSurname:
+        surname:
           "Prueba",
 
-        secondSurname:
-          "",
+        displayName:
+          "Usuario",
 
         phone:
           "3001234567",
       }),
 
+    /*
+     * Claims observados en el JWT
+     * real de Azure B2C.
+     */
+    tfp:
+      "B2C_1A_signup_signin",
+
+    nonce:
+      "mock-nonce-authenticated",
+
+    azp:
+      "de60c92e-c254-401d-8b76-276fb37e50b5",
+
+    ver:
+      "1.0",
+
+    /*
+     * Claim auxiliar de nuestro mock.
+     */
     authenticated:
       true,
   });
@@ -187,16 +278,17 @@ const AUTHENTICATED_USER =
  * USUARIO NO AUTENTICADO
  * ======================================================
  *
- * IMPORTANTE:
+ * Lo dejamos con la misma estructura completa
+ * para poder probar:
  *
- * Ya NO dejamos este JWT sin documento/correo.
+ * Formulario 1 anónimo
+ * Formulario 2 anónimo
+ * Formulario 3 anónimo
+ * Formulario 4 anónimo
  *
- * En nuestras pruebas anteriores eso provocaba que
- * DNN decodificara correctamente el JWT, pero al buscar
- * numeroIdentificacion/documento obtuviera null.
+ * La diferencia principal será:
  *
- * Este escenario conserva una identidad de prueba,
- * pero authenticated = false.
+ * authenticated = false
  */
 
 const ANONYMOUS_USER =
@@ -214,17 +306,17 @@ const ANONYMOUS_USER =
       "usuario.anonimo@essa.com.co",
     ],
 
-    given_name:
-      "Usuario",
-
     family_name:
       "Anonimo",
+
+    given_name:
+      "Usuario",
 
     name:
       "Usuario Anonimo",
 
     phone_number:
-      "+573009876543",
+      "3009876543",
 
     document:
       "1020304050",
@@ -240,25 +332,45 @@ const ANONYMOUS_USER =
         givenName:
           "Usuario",
 
-        firstSurname:
+        surname:
           "Anonimo",
 
-        secondSurname:
-          "",
+        displayName:
+          "Usuario",
 
         phone:
           "3009876543",
       }),
 
+    tfp:
+      "B2C_1A_signup_signin",
+
+    nonce:
+      "mock-nonce-anonymous",
+
+    azp:
+      "de60c92e-c254-401d-8b76-276fb37e50b5",
+
+    ver:
+      "1.0",
+
     authenticated:
       false,
   });
+
+/*
+ * ======================================================
+ * HELPERS
+ * ======================================================
+ */
 
 function withoutTrailingSlash(
   value
 ) {
   let result =
-    String(value ?? "");
+    String(
+      value ?? ""
+    );
 
   while (
     result.endsWith("/")
@@ -285,52 +397,20 @@ function requestBaseUrl(
     );
   }
 
+  /*
+   * IMPORTANTE:
+   *
+   * Dejamos el issuer apuntando al mock.
+   *
+   * NO fingimos que somos directamente
+   * el issuer real de EPM porque nuestro
+   * JWT está firmado con nuestras propias
+   * claves RSA locales.
+   */
   return (
     `${request.protocol}` +
     `://${request.get("host")}`
   );
-}
-
-function bearerToken(
-  request
-) {
-  const authorization =
-    request.get(
-      "authorization"
-    ) ?? "";
-
-  const prefix =
-    "Bearer ";
-
-  if (
-    !authorization
-      .toLowerCase()
-      .startsWith(
-        prefix.toLowerCase()
-      )
-  ) {
-    return null;
-  }
-
-  const token =
-    authorization
-      .slice(
-        prefix.length
-      )
-      .trim();
-
-  return token || null;
-}
-
-function safeJsonForHtml(
-  value
-) {
-  return JSON
-    .stringify(value)
-    .replaceAll(
-      "<",
-      String.raw`\u003c`
-    );
 }
 
 function normalizeScenario(
@@ -369,9 +449,53 @@ function userForScenario(
     : AUTHENTICATED_USER;
 }
 
+function bearerToken(
+  request
+) {
+  const authorization =
+    request.get(
+      "authorization"
+    ) ?? "";
+
+  const prefix =
+    "Bearer ";
+
+  if (
+    !authorization
+      .toLowerCase()
+      .startsWith(
+        prefix.toLowerCase()
+      )
+  ) {
+    return null;
+  }
+
+  const token =
+    authorization
+      .slice(
+        prefix.length
+      )
+      .trim();
+
+  return token || null;
+}
+
+function safeJsonForHtml(
+  value
+) {
+  return JSON
+    .stringify(
+      value
+    )
+    .replaceAll(
+      "<",
+      String.raw`\u003c`
+    );
+}
+
 /*
  * Convierte personalinformation
- * de string JSON a objeto.
+ * desde string JSON a objeto.
  */
 function parsePersonalInformation(
   value
@@ -385,7 +509,9 @@ function parsePersonalInformation(
 
   try {
     const parsed =
-      JSON.parse(value);
+      JSON.parse(
+        value
+      );
 
     if (
       parsed &&
@@ -403,7 +529,7 @@ function parsePersonalInformation(
 
 /*
  * ======================================================
- * CLAVES RSA
+ * RSA
  * ======================================================
  */
 
@@ -526,6 +652,7 @@ async function loadOrCreateKeyPair(
   return {
     privateKey,
     publicKey,
+
     created:
       true,
   };
@@ -533,7 +660,7 @@ async function loadOrCreateKeyPair(
 
 /*
  * ======================================================
- * PÁGINA DNN LOCAL
+ * PÁGINA LOCAL DE PRUEBA
  * ======================================================
  */
 
@@ -558,6 +685,7 @@ function dnnTestPage(
       success
         ? {
             message,
+
             user:
               result.user,
           }
@@ -567,16 +695,21 @@ function dnnTestPage(
   };
 
   const document =
-    result.user?.document ??
+    result.user
+      ?.document ??
     "No disponible";
 
   const email =
-    result.user?.email ??
+    result.user
+      ?.email ??
     "No disponible";
 
   return `<!doctype html>
+
 <html lang="es">
+
 <head>
+
 <meta charset="utf-8" />
 
 <meta
@@ -587,6 +720,7 @@ function dnnTestPage(
 <title>DNN local de prueba</title>
 
 <style>
+
 * {
   box-sizing: border-box;
 }
@@ -612,7 +746,9 @@ main {
 .status {
   font-weight: 700;
 }
+
 </style>
+
 </head>
 
 <body>
@@ -622,32 +758,36 @@ main {
 <h1>DNN local de prueba</h1>
 
 <p class="status">
-  ${
-    success
-      ? "Acceso correcto"
-      : "Acceso rechazado"
-  }
+
+${
+  success
+    ? "Acceso correcto"
+    : "Acceso rechazado"
+}
+
 </p>
 
-<p>${message}</p>
+<p>
+${message}
+</p>
 
 ${
   success
     ? `
 <p>
-  Nombre:
-  ${result.user.given_name ?? ""}
-  ${result.user.family_name ?? ""}
+Nombre:
+${result.user.given_name ?? ""}
+${result.user.family_name ?? ""}
 </p>
 
 <p>
-  Documento:
-  ${document}
+Documento:
+${document}
 </p>
 
 <p>
-  Correo:
-  ${email}
+Correo:
+${email}
 </p>
 `
     : ""
@@ -656,6 +796,7 @@ ${
 </main>
 
 <script>
+
 const message =
   ${safeJsonForHtml(
     reactMessage
@@ -672,15 +813,17 @@ if (
       )
     );
 }
+
 </script>
 
 </body>
+
 </html>`;
 }
 
 /*
  * ======================================================
- * MOCK
+ * JWT MOCK
  * ======================================================
  */
 
@@ -713,6 +856,12 @@ export async function createJwtMock(
     options.logger ??
     console;
 
+  /*
+   * ====================================================
+   * CLAVES
+   * ====================================================
+   */
+
   const {
     privateKey,
     publicKey,
@@ -736,13 +885,18 @@ export async function createJwtMock(
     publicJwk,
     {
       kid,
+
       use:
         "sig",
+
       alg:
         "RS256",
     }
   );
 
+  /*
+   * Códigos temporales.
+   */
   const codes =
     new Map();
 
@@ -847,6 +1001,12 @@ export async function createJwtMock(
     };
   }
 
+  /*
+   * ====================================================
+   * EXPRESS
+   * ====================================================
+   */
+
   const app =
     express();
 
@@ -854,9 +1014,6 @@ export async function createJwtMock(
     "x-powered-by"
   );
 
-  /*
-   * Solo para el entorno de pruebas.
-   */
   app.use(
     cors()
   );
@@ -866,6 +1023,47 @@ export async function createJwtMock(
       limit:
         "16kb",
     })
+  );
+
+  /*
+   * ====================================================
+   * ROOT
+   * ====================================================
+   */
+
+  app.get(
+    "/",
+    (
+      _request,
+      response
+    ) => {
+      response.json({
+        ok:
+          true,
+
+        service:
+          "ESSA JWT Mock",
+
+        token_ttl:
+          TOKEN_TTL,
+
+        audience,
+
+        endpoints: {
+          health:
+            "/health",
+
+          authenticated:
+            "/token?scenario=authenticated",
+
+          anonymous:
+            "/token?scenario=anonymous",
+
+          jwks:
+            "/jwks.json",
+        },
+      });
+    }
   );
 
   /*
@@ -886,13 +1084,18 @@ export async function createJwtMock(
 
         service:
           "ESSA JWT Mock",
+
+        token_ttl:
+          TOKEN_TTL,
+
+        audience,
       });
     }
   );
 
   /*
    * ====================================================
-   * OPENID
+   * OPENID CONFIG
    * ====================================================
    */
 
@@ -925,6 +1128,12 @@ export async function createJwtMock(
     }
   );
 
+  /*
+   * ====================================================
+   * JWKS
+   * ====================================================
+   */
+
   app.get(
     "/jwks.json",
     (
@@ -941,12 +1150,8 @@ export async function createJwtMock(
 
   /*
    * ====================================================
-   * GENERACIÓN JWT
+   * GENERACIÓN DE JWT
    * ====================================================
-   *
-   * /token?scenario=authenticated
-   *
-   * /token?scenario=anonymous
    */
 
   const issueToken =
@@ -975,21 +1180,32 @@ export async function createJwtMock(
           );
 
         /*
-         * IMPORTANTE:
+         * TODO el objeto user pasa al payload.
          *
-         * SignJWT recibe TODO el objeto.
+         * Por lo tanto:
          *
-         * Por lo tanto personalinformation,
-         * email, emails, phone_number,
-         * document, etc. quedan realmente
-         * dentro del payload.
+         * email
+         * emails
+         * oid
+         * sub
+         * name
+         * given_name
+         * family_name
+         * phone_number
+         * personalinformation
+         * tfp
+         * nonce
+         * azp
+         * ver
+         * authenticated
+         *
+         * terminan realmente dentro del JWT.
          */
         const token =
-          await new SignJWT(
-            {
-              ...user,
-            }
-          )
+          await new SignJWT({
+            ...user,
+          })
+
             .setProtectedHeader({
               alg:
                 "RS256",
@@ -999,28 +1215,31 @@ export async function createJwtMock(
               typ:
                 "JWT",
             })
+
             .setIssuer(
               issuer
             )
+
             .setAudience(
               audience
             )
+
             .setIssuedAt()
+
             .setNotBefore(
               "0s"
             )
+
             .setExpirationTime(
-              "30m"
+              TOKEN_TTL
             )
+
             .sign(
               privateKey
             );
 
         /*
-         * Diagnóstico del mock.
-         *
-         * No imprimimos el JWT completo
-         * aquí.
+         * Diagnóstico.
          */
         logger.info(
           `[JWT-MOCK] Token generado: ${scenario}`
@@ -1031,15 +1250,29 @@ export async function createJwtMock(
         );
 
         logger.info(
-          `[JWT-MOCK] Documento: ${user.document}`
+          `[JWT-MOCK] Documento: ${
+            user.document ??
+            "NULL"
+          }`
         );
 
         logger.info(
-          `[JWT-MOCK] Email: ${user.email}`
+          `[JWT-MOCK] Email: ${
+            user.email ??
+            "NULL"
+          }`
         );
 
         logger.info(
           `[JWT-MOCK] personalinformation: ${user.personalinformation}`
+        );
+
+        logger.info(
+          `[JWT-MOCK] Audience: ${audience}`
+        );
+
+        logger.info(
+          `[JWT-MOCK] Issuer: ${issuer}`
         );
 
         response
@@ -1055,7 +1288,7 @@ export async function createJwtMock(
               "Bearer",
 
             expires_in:
-              1800,
+              TOKEN_TTL_SECONDS,
 
             scenario,
           });
@@ -1125,7 +1358,9 @@ export async function createJwtMock(
             publicKey,
             {
               issuer,
+
               audience,
+
               algorithms: [
                 "RS256",
               ],
@@ -1134,7 +1369,7 @@ export async function createJwtMock(
 
         /*
          * personalinformation llega como
-         * string JSON.
+         * JSON serializado.
          */
         const personalInfo =
           parsePersonalInformation(
@@ -1143,25 +1378,24 @@ export async function createJwtMock(
           );
 
         /*
-         * El documento se busca primero
-         * donde viene en el token del cliente:
-         *
-         * personalinformation
-         * .numeroIdentificacion
-         *
-         * Y dejamos payload.document
-         * como fallback.
+         * Documento.
          */
         const document =
           personalInfo
             ?.numeroIdentificacion ??
           payload.document;
 
+        /*
+         * Correo.
+         */
         const email =
           payload.email ??
           personalInfo
             ?.correoElectronico;
 
+        /*
+         * Teléfono.
+         */
         const phone =
           payload
             .phone_number ??
@@ -1198,6 +1432,18 @@ export async function createJwtMock(
             payload
               .personalinformation,
 
+          tfp:
+            payload.tfp,
+
+          nonce:
+            payload.nonce,
+
+          azp:
+            payload.azp,
+
+          ver:
+            payload.ver,
+
           authenticated:
             payload
               .authenticated,
@@ -1217,6 +1463,13 @@ export async function createJwtMock(
         logger.info(
           `[JWT-MOCK] Email decodificado: ${
             email ??
+            "NULL"
+          }`
+        );
+
+        logger.info(
+          `[JWT-MOCK] PersonalInformation: ${
+            payload.personalinformation ??
             "NULL"
           }`
         );
@@ -1313,7 +1566,7 @@ export async function createJwtMock(
 
   /*
    * ====================================================
-   * DNN TEST
+   * DNN LOCAL TEST
    * ====================================================
    */
 
@@ -1334,7 +1587,9 @@ export async function createJwtMock(
           "cache-control",
           "no-store"
         )
-        .type("html")
+        .type(
+          "html"
+        )
         .send(
           dnnTestPage(
             result
@@ -1345,7 +1600,7 @@ export async function createJwtMock(
 
   /*
    * ====================================================
-   * MANEJO ERRORES
+   * ERROR HANDLER
    * ====================================================
    */
 
@@ -1487,53 +1742,84 @@ export async function startServer() {
       keyDirectory,
     });
 
-  return mock.app.listen(
-    port,
-    "0.0.0.0",
-    () => {
-      console.log(
-        `\nJWT mock escuchando en 0.0.0.0:${port}`
-      );
-
-      console.log(
-        `Claves ${
-          mock.keysCreated
-            ? "creadas"
-            : "cargadas"
-        } en ${mock.keyDirectory}`
-      );
-
-      console.log(
-        `Local: http://localhost:${port}/health`
-      );
-
-      for (
-        const url
-        of lanUrls(
-          port
-        )
-      ) {
+  const server =
+    mock.app.listen(
+      port,
+      "0.0.0.0",
+      () => {
         console.log(
-          `LAN: ${url}/health`
+          `\nJWT mock escuchando en 0.0.0.0:${port}`
+        );
+
+        console.log(
+          `Claves ${
+            mock.keysCreated
+              ? "creadas"
+              : "cargadas"
+          } en ${mock.keyDirectory}`
+        );
+
+        console.log(
+          `JWT TTL: ${TOKEN_TTL}`
+        );
+
+        console.log(
+          `Audience: ${process.env.JWT_MOCK_AUDIENCE ?? DEFAULT_AUDIENCE}`
+        );
+
+        console.log(
+          `Local: http://localhost:${port}/health`
+        );
+
+        for (
+          const url
+          of lanUrls(
+            port
+          )
+        ) {
+          console.log(
+            `LAN: ${url}/health`
+          );
+        }
+
+        console.log(
+          "\nTokens:"
+        );
+
+        console.log(
+          `  Autenticado: http://localhost:${port}/token?scenario=authenticated`
+        );
+
+        console.log(
+          `  Anónimo:     http://localhost:${port}/token?scenario=anonymous`
+        );
+
+        console.log(
+          "\nServidor activo. Ctrl+C para detenerlo.\n"
         );
       }
+    );
 
-      console.log(
-        "Tokens disponibles:"
+  server.on(
+    "error",
+    (
+      error
+    ) => {
+      console.error(
+        "[JWT-MOCK] Error del servidor:",
+        error
       );
-
-      console.log(
-        `  http://localhost:${port}/token?scenario=authenticated`
-      );
-
-      console.log(
-        `  http://localhost:${port}/token?scenario=anonymous`
-      );
-
-      console.log("");
     }
   );
+
+  return server;
 }
+
+/*
+ * ======================================================
+ * ENTRY POINT
+ * ======================================================
+ */
 
 const isEntryPoint =
   process.argv[1] &&
@@ -1546,7 +1832,28 @@ const isEntryPoint =
 
 if (isEntryPoint) {
   try {
-    await startServer();
+    const server =
+      await startServer();
+
+    /*
+     * Cierre controlado.
+     */
+    process.on(
+      "SIGINT",
+      () => {
+        console.log(
+          "\n[JWT-MOCK] Cerrando servidor..."
+        );
+
+        server.close(
+          () => {
+            process.exit(
+              0
+            );
+          }
+        );
+      }
+    );
   } catch (error) {
     console.error(
       "No se pudo iniciar jwt-mock:",
